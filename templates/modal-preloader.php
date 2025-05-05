@@ -1,5 +1,13 @@
 <?php
-// Modal Preloader.
+/**
+ * Modal and Preloader Template
+ *
+ * Provides the HTML for the PlugeGuard preloader spinner and the confirmation modal.
+ *
+ * @package PlugeGuard
+ */
+
+if (!defined('ABSPATH')) exit;
 ?>
 <div class="plugeguard-preloader">
     <div class="progress-container">

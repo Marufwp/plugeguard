@@ -1,6 +1,6 @@
 ﻿=== PlugeGuard ===
-Contributors: Plugesoft Team
-Tags: security, scanner, firewall, remove hidden passwords, credentials scanner 
+Contributors: maruffwp
+Tags: security, scanner, firewall, remove hidden passwords, hidden login scanner 
 Requires PHP: 8.0
 Requires at least: 5.6
 Tested up to: 6.8
@@ -14,7 +14,7 @@ Scans your WordPress installation for hardcoded login credentials (usernames/pas
 PlugeGuard enhances WordPress security by detecting hidden or hardcoded login credentials within your PHP files. It provides an admin UI to review and remove potential backdoors or malicious injections manually.
 
 Features:
-* Deep file scanning for hidden credentials
+* Deep file scanning for hidden login credentials
 * Secure file viewing and removal
 * Lightweight and easy to use
 * Fully compatible with modern WordPress standards
@@ -22,10 +22,10 @@ Features:
 == Installation ==
 1. Upload the plugin to the `/wp-content/plugins/` directory
 2. Activate through the 'Plugins' menu
-3. Go to PlugeGuard Setting > PlugeGuard to scan your site
+3. Go to Tools > PlugeGuard Setting to scan your site
 
 == Frequently Asked Questions ==
-= Does it delete files? =
+= Does it delete all files? =
 No. It only removes detected credential lines, not entire files.
 
 = Will it detect all types of hidden credentials? =

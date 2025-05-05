@@ -2,9 +2,9 @@
 /**
  * Plugin Name: PlugeGuard
  * Plugin URI: https://wordpress.org/plugins/plugeguard/
- * Description: This plugin scans your entire WordPress site for hidden or hardcoded usernames and passwords, helping you identify and safely remove potential security threats.
+ * Description: Scans your entire WordPress site for hidden or hardcoded usernames and passwords, helping you identify and safely remove potential security threats.
  * Version: 1.0
- * Author: Plugesoft Team
+ * Author: maruffwp
  * Author URI: https://plugesoft.com
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -13,12 +13,22 @@
  * Requires at least: 5.6
  * Tested up to: 6.5
  * Stable tag: 1.0
- * Tags: security, scanner, firewall, remove hidden passwords, credentials scanner 
+ * Tags: security, scanner, firewall, remove hidden passwords, credentials scanner
+ *
+ * @package PlugeGuard
  */
 
 if (!defined('ABSPATH')) exit;
 
+/**
+ * Class PlugeGuard
+ * Handles scanning, removal, and updating of hardcoded credentials in PHP files across the WordPress installation.
+ */
 class PlugeGuard {
+
+    /**
+     * Constructor. Hooks into WordPress actions.
+     */
     public function __construct() {
         add_action('admin_menu', [$this, 'add_admin_menu']);
         add_action('admin_post_plugeguard_remove_code', [$this, 'remove_code']);
@@ -27,41 +37,43 @@ class PlugeGuard {
         add_action('admin_init', [$this, 'handle_activation_redirect']);
     }
 
+    /**
+     * Handles plugin activation redirect with security nonce check.
+     */
     public function handle_activation_redirect() {
-        // Check if the redirect option exists
         if (get_option('plugeguard_redirect_on_activate')) {
             $activation_url = get_option('plugeguard_redirect_on_activate');
             delete_option('plugeguard_redirect_on_activate');
             
-            // Unsplash and sanitize the nonce input
             $nonce = isset($_GET['plugeguard_activation_nonce']) ? sanitize_key(wp_unslash($_GET['plugeguard_activation_nonce'])) : '';
-            $nonce = sanitize_text_field($nonce); // Sanitize the nonce input
+            $nonce = sanitize_text_field($nonce);
             
-            // Verify nonce for the redirect
             if (!empty($nonce) && wp_verify_nonce($nonce, 'plugeguard_activation_action')) {
-                // If nonce is valid and no multi-activation is being performed
                 if (!isset($_GET['activate-multi'])) {
                     wp_safe_redirect($activation_url);
                     exit;
                 }
             } else {
-                // If nonce verification fails, handle it (redirect, error message, etc.)
                 wp_die('Security check failed. Invalid request.');
             }
         }
     }
-       
+
+    /**
+     * Enqueues necessary CSS and JavaScript assets for the admin interface.
+     */
     public function enqueue_assets() {
         wp_enqueue_code_editor(['type' => 'text/x-php']);
         wp_enqueue_script('wp-theme-plugin-editor');
         wp_enqueue_style('wp-codemirror');
-        
+    
         wp_enqueue_style(
             'plugeguard-css', 
             plugin_dir_url(__FILE__) . 'assets/css/plugeguard.css',
             [],
             filemtime(plugin_dir_path(__FILE__) . 'assets/css/plugeguard.css')
         );
+    
         wp_enqueue_script(
             'plugeguard-js', 
             plugin_dir_url(__FILE__) . 'assets/js/plugeguard.js', 
@@ -69,8 +81,23 @@ class PlugeGuard {
             filemtime(plugin_dir_path(__FILE__) . 'assets/js/plugeguard.js'), 
             true
         );
+    
+        wp_enqueue_script(
+            'plugeguard-editor-js',
+            plugin_dir_url(__FILE__) . 'assets/js/plugeguard-editor.js',
+            ['jquery', 'wp-code-editor'],
+            filemtime(plugin_dir_path(__FILE__) . 'assets/js/plugeguard-editor.js'),
+            true
+        );
+    
+        wp_localize_script('plugeguard-editor-js', 'plugeguard_data', [
+            'highlight_line' => $this->highlight_line, 
+        ]);
     }
 
+    /**
+     * Adds the PlugeGuard admin menu page.
+     */
     public function add_admin_menu() {
         add_menu_page(
             esc_html__('PlugeGuard', 'plugeguard'),
@@ -78,13 +105,16 @@ class PlugeGuard {
             'manage_options',
             'plugeguard',
             [$this, 'scanner_page'],
-            'dashicons-shield-alt',
+            'dashicons-shield',
             100
         );
     }
 
+    /**
+     * Displays the main scanner page, showing scan results and removal options.
+     */
     public function scanner_page() {
-        $this->results = $this->scan_directory(ABSPATH);
+        $this->results = $this->scan_directory(get_theme_root(__FILE__));
 
         echo '<div class="wrap">';
         echo '<h1>' . esc_html__('PlugeGuard: Hidden Login Scanner', 'plugeguard') . '</h1>';
@@ -131,13 +161,19 @@ class PlugeGuard {
             '<a href="mailto:support@plugesoft.com">support@plugesoft.com</a>',
             '<a href="https://www.linkedin.com/in/maruffwp/">LinkedIn</a>'
         );
+
         echo '<p>' . wp_kses_post($help_text) . '</p>';
         echo '</div>';
         include_once plugin_dir_path(__FILE__) . 'templates/modal-preloader.php';
     }
 
+    /**
+     * Scans a directory recursively for PHP files containing hardcoded credentials.
+     *
+     * @param string $dir Directory path to scan.
+     * @return array Scan results.
+     */
     public function scan_directory($dir) {
-
         $results = [];
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir));
 
@@ -159,6 +195,9 @@ class PlugeGuard {
         return $results;
     }
 
+    /**
+     * Handles the removal of a specific line of code from a file.
+     */
     public function remove_code() {
         if (!current_user_can('manage_options') || !isset($_POST['plugeguard_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['plugeguard_nonce'])), 'plugeguard_remove_action')) {
             wp_die(esc_html__('Unauthorized', 'plugeguard'));
@@ -168,27 +207,10 @@ class PlugeGuard {
             wp_die(esc_html__('Invalid request', 'plugeguard'));
         }
 
-        /**
-         * SECURITY NOTE: Handling raw file path input from POST request
-         * We avoid standard sanitization functions just like for this one:
-         * $file = isset($_POST['file']) ? urldecode(wp_unslash($_POST['file'])) : ''; 
-         * Because they alter valid file paths, which leading failed to file matching and removal.
-         * To maintain security while preserving path accuracy, the following safeguards are in place:
-                * 1. Nonce verification is already done prior to this logic (via check_ajax_referer or similar).
-                * 2. Directory traversal is prevented by removing '../' and '..\' sequences.
-                * 3. We prepend ABSPATH and normalize the path to ensure it's within the WordPress root directory.
-                * 4. We use realpath() later to confirm the file's actual location and existence.
-                * 5. File write permissions and actual file deletion logic are tightly controlled.
-         *
-         * This approach is secure under these enforced constraints.
-        */
-
-        // phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
-        $file = isset($_POST['file']) ? urldecode(wp_unslash($_POST['file'])) : '';
-        // phpcs:enable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+        $file = ! empty( $_POST['file'] ) ? sanitize_text_field( urldecode( wp_unslash( $_POST['file'] ) ) ) : '';
         $file = str_replace(['../', '..\\'], '', $file);
-        $normalized_path = wp_normalize_path(ABSPATH . $file);
-        
+        $normalized_path = wp_normalize_path(get_theme_root(__FILE__) . '/' . $file);
         $line_number = (int)$_POST['line'];
 
         if (file_exists($file)) {
@@ -203,6 +225,9 @@ class PlugeGuard {
         exit;
     }
 
+    /**
+     * Updates the contents of a given file.
+     */
     public function update_file() {
         if (!current_user_can('manage_options') || !isset($_POST['plugeguard_nonce']) || !wp_verify_nonce(sanitize_key(wp_unslash($_POST['plugeguard_nonce'])), 'plugeguard_update_action')) {
             wp_die(esc_html__('Unauthorized', 'plugeguard'));
@@ -213,12 +238,10 @@ class PlugeGuard {
         }
 
         if (isset($_POST['file'])) {
-            // Sanitize the file input
             $file = sanitize_file_name(wp_unslash($_POST['file']));
         }
         
         if (isset($_POST['content'])) {
-            // Sanitize the content input (adjust the sanitization function based on the content type)
             $content = sanitize_textarea_field(wp_unslash($_POST['content']));
         }
         
@@ -235,6 +258,12 @@ class PlugeGuard {
 
 new PlugeGuard();
 
+/**
+ * Adds a 'Settings' link on the plugin listing page.
+ *
+ * @param array $links Existing plugin action links.
+ * @return array Modified links.
+ */
 add_filter('plugin_action_links_' . plugin_basename(__FILE__), 'plugeguard_plugin_action_links');
 
 function plugeguard_plugin_action_links($links) {
@@ -242,4 +271,3 @@ function plugeguard_plugin_action_links($links) {
     array_unshift($links, $settings_link);
     return $links;
 }
-
